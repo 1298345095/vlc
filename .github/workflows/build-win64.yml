@@ -77,25 +77,32 @@ jobs:
           # Verify release assertions are disabled by the actual configure step.
           grep -Eq '^#define NDEBUG( |$)' win64/config.h
 
-      - name: Package portable VLC (with translations, without debug symbols)
+      - name: Build Windows installer (NSIS)
         run: |
           set -euo pipefail
 
-          make -C build/win64 package-win-common
+          # VLC's official packaging target stages the application, strips
+          # Windows binaries, builds the required installer helpers and
+          # generates vlc-3.0.24-win64.exe.
+          make -C build/win64 package-win32-exe
+          test -s build/win64/vlc-3.0.24-win64.exe
+
+      - name: Prepare portable VLC
+        run: |
+          set -euo pipefail
+
           package_dir="build/win64/vlc-3.0.24"
 
-          # Fail instead of uploading a package without a GUI or Chinese locale.
+          # Ensure the binary and simplified Chinese UI translation are present.
           test -s "$package_dir/vlc.exe"
           test -s "$package_dir/locale/zh_CN/LC_MESSAGES/vlc.mo"
 
-          # package-win-common includes headers/import libraries intended for
-          # developers. Only a runnable VLC installation is distributed here.
-          rm -rf "$package_dir/sdk"
-
-          # Keep the usual DLLs/plugins but discard their large debug symbols.
-          # VLC's official release packaging also strips Windows PE binaries.
-          find "$package_dir" -type f \( -iname '*.exe' -o -iname '*.dll' \) \
-            -exec x86_64-w64-mingw32-strip --strip-unneeded {} +
+          # The upstream installer packaging already stripped Windows PE
+          # binaries. Remove development and NSIS staging-only files from
+          # the separate portable artifact.
+          rm -rf "$package_dir/sdk" "$package_dir/NSIS" \
+                 "$package_dir/languages" "$package_dir/helpers"
+          rm -f "$package_dir"/*.nsi "$package_dir/spad-setup.exe"
           find "$package_dir" -type f \( -name '*.dbg' -o -name '*.pdb' \) -delete
 
           du -sh "$package_dir"
@@ -105,5 +112,13 @@ jobs:
         with:
           name: VLC-3.0.24-win64-HiDPI-Release-multilang
           path: build/win64/vlc-3.0.24/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: VLC-3.0.24-win64-HiDPI-Release-Installer
+          path: build/win64/vlc-3.0.24-win64.exe
           if-no-files-found: error
           retention-days: 7
