@@ -35,6 +35,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The host runner owns the checkout, but the build container runs as root.
+      # actions/checkout configures safe.directory only with a temporary HOME.
+      - name: Mark checkout as a safe Git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Find matching prebuilt contribs
         run: |
           set -euo pipefail
