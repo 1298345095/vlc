@@ -50,6 +50,7 @@
 #include <QSignalMapper>
 #include <QTimer>
 #include <QApplication>
+#include <QDynamicPropertyChangeEvent>
 #include <QWindow>
 #include <QScreen>
 #if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
@@ -57,6 +58,66 @@
 #endif
 
 //#define DEBUG_LAYOUT 1
+
+namespace
+{
+const char bigButtonProperty[] = "vlcToolbarBigButton";
+
+class ToolbarButtonSizeHandler : public QObject
+{
+public:
+    explicit ToolbarButtonSizeHandler( QAbstractButton *button )
+        : QObject( button ), button( button )
+    {
+        button->setProperty( bigButtonProperty, false );
+        button->installEventFilter( this );
+        updateSize();
+    }
+
+protected:
+    bool eventFilter( QObject *watched, QEvent *event ) Q_DECL_OVERRIDE
+    {
+        switch( event->type() )
+        {
+        case QEvent::DynamicPropertyChange:
+            if( static_cast<QDynamicPropertyChangeEvent *>(event)->propertyName()
+                != bigButtonProperty )
+                break;
+            updateSize();
+            break;
+        case QEvent::Show:
+        case QEvent::ParentChange:
+        case QEvent::FontChange:
+        case QEvent::ScreenChangeInternal:
+            updateSize();
+            break;
+        default:
+            break;
+        }
+        return QObject::eventFilter( watched, event );
+    }
+
+private:
+    void updateSize()
+    {
+        const bool big = button->property( bigButtonProperty ).toBool();
+        /* Logical DPI accounts for scaling already applied by Qt. Only scale
+         * the toolbar button and its icon, using their original sizes. */
+#ifdef Q_OS_MAC
+        const qreal baseDpi = 72.0;
+#else
+        const qreal baseDpi = 96.0;
+#endif
+        const qreal scale = button->logicalDpiX() / baseDpi;
+        const int buttonSize = qRound( ( big ? 32 : 26 ) * scale );
+        const int iconSize = qRound( ( big ? 26 : 20 ) * scale );
+        button->setFixedSize( buttonSize, buttonSize );
+        button->setIconSize( QSize( iconSize, iconSize ) );
+    }
+
+    QAbstractButton *button;
+};
+}
 
 /**********************************************************************
  * TEH controls
@@ -107,9 +168,8 @@ void AbstractController::setupButton( QAbstractButton *aButton )
     sizePolicy.setVerticalStretch( 0 );
 
     aButton->setSizePolicy( sizePolicy );
-    aButton->setFixedSize( QSize( 26, 26 ) );
-    aButton->setIconSize( QSize( 20, 20 ) );
     aButton->setFocusPolicy( Qt::NoFocus );
+    new ToolbarButtonSizeHandler( aButton );
 }
 
 /* Open the generic config line for the toolbar, parse it
@@ -530,8 +590,13 @@ void AbstractController::applyAttributes( QToolButton *tmpButton, bool b_flat, b
             tmpButton->setAutoRaise( b_flat );
         if( b_big )
         {
-            tmpButton->setFixedSize( QSize( 32, 32 ) );
-            tmpButton->setIconSize( QSize( 26, 26 ) );
+            if( tmpButton->property( bigButtonProperty ).isValid() )
+                tmpButton->setProperty( bigButtonProperty, true );
+            else
+            {
+                tmpButton->setFixedSize( QSize( 32, 32 ) );
+                tmpButton->setIconSize( QSize( 26, 26 ) );
+            }
         }
     }
 }
