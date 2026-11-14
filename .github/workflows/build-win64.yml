@@ -65,15 +65,36 @@ jobs:
 
           mkdir -p build
           cd build
-          sh ../extras/package/win32/build.sh -a x86_64 "${build_flags[@]}"
+          # -l enables gettext/NLS, including zh_CN translations.
+          sh ../extras/package/win32/build.sh -a x86_64 -l "${build_flags[@]}"
 
-      - name: Package portable VLC
-        run: make -C build/win64 package-win-common
+      - name: Package portable VLC (with translations, without debug symbols)
+        run: |
+          set -euo pipefail
+
+          make -C build/win64 package-win-common
+          package_dir="build/win64/vlc-3.0.24"
+
+          # Fail instead of uploading a package without a GUI or Chinese locale.
+          test -s "$package_dir/vlc.exe"
+          test -s "$package_dir/locale/zh_CN/LC_MESSAGES/vlc.mo"
+
+          # package-win-common includes headers/import libraries intended for
+          # developers. Only a runnable VLC installation is distributed here.
+          rm -rf "$package_dir/sdk"
+
+          # Keep the usual DLLs/plugins but discard their large debug symbols.
+          # VLC's official release packaging also strips Windows PE binaries.
+          find "$package_dir" -type f \( -iname '*.exe' -o -iname '*.dll' \) \
+            -exec x86_64-w64-mingw32-strip --strip-unneeded {} +
+          find "$package_dir" -type f \( -name '*.dbg' -o -name '*.pdb' \) -delete
+
+          du -sh "$package_dir"
 
       - name: Upload portable Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: VLC-3.0.24-win64-HiDPI
+          name: VLC-3.0.24-win64-HiDPI-multilang
           path: build/win64/vlc-3.0.24/
           if-no-files-found: error
           retention-days: 7
