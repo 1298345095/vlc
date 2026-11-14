@@ -21,6 +21,9 @@ jobs:
     # Same win64 build environment as VLC 3.0's upstream GitLab CI.
     container:
       image: registry.videolan.org/vlc-debian-win64-3.0:20260820114402
+      # VLC's build image uses a non-root user; checkout needs write access
+      # to GitHub Actions' mounted temp/file-command directories.
+      options: --user 0:0
 
     defaults:
       run:
