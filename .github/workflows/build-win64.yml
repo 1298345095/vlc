@@ -1,0 +1,71 @@
+name: Build VLC Windows x64
+
+on:
+  push:
+    branches:
+      - fix/qt-toolbar-hidpi
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: win64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-win64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    # Same win64 build environment as VLC 3.0's upstream GitLab CI.
+    container:
+      image: registry.videolan.org/vlc-debian-win64-3.0:20260820114402
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find matching prebuilt contribs
+        run: |
+          set -euo pipefail
+
+          contrib_sha="$(extras/ci/get-contrib-sha.sh win64)"
+          contrib_url="https://artifacts.videolan.org/vlc-3.0/win64/vlc-contrib-x86_64-w64-mingw32-${contrib_sha}.tar.zst"
+
+          if extras/ci/check-url.sh "$contrib_url"; then
+            echo "VLC_PREBUILT_CONTRIBS_URL=$contrib_url" >> "$GITHUB_ENV"
+            echo "USE_PREBUILT=yes" >> "$GITHUB_ENV"
+          else
+            echo "USE_PREBUILT=no" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build VLC with Qt (Windows x64)
+        run: |
+          set -euo pipefail
+
+          build_flags=()
+          if [[ "${USE_PREBUILT}" == "yes" ]]; then
+            build_flags+=(-p)
+          fi
+
+          mkdir -p build
+          cd build
+          sh ../extras/package/win32/build.sh -a x86_64 "${build_flags[@]}"
+
+      - name: Package portable VLC
+        run: make -C build/win64 package-win-common
+
+      - name: Upload portable Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: VLC-3.0.24-win64-HiDPI
+          path: build/win64/vlc-3.0.24/
+          if-no-files-found: error
+          retention-days: 7
