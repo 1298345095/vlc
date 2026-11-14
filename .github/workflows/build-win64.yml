@@ -65,8 +65,17 @@ jobs:
 
           mkdir -p build
           cd build
+
+          # build.sh defaults to Debug. Set RELEASE=yes to select its
+          # production configuration without -r's automatic NSIS installer
+          # packaging; we package the portable build separately below.
+          export RELEASE=yes
+          export CONFIGFLAGS="--disable-debug --enable-optimizations"
           # -l enables gettext/NLS, including zh_CN translations.
           sh ../extras/package/win32/build.sh -a x86_64 -l "${build_flags[@]}"
+
+          # Verify release assertions are disabled by the actual configure step.
+          grep -Eq '^#define NDEBUG( |$)' win64/config.h
 
       - name: Package portable VLC (with translations, without debug symbols)
         run: |
@@ -94,7 +103,7 @@ jobs:
       - name: Upload portable Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: VLC-3.0.24-win64-HiDPI-multilang
+          name: VLC-3.0.24-win64-HiDPI-Release-multilang
           path: build/win64/vlc-3.0.24/
           if-no-files-found: error
           retention-days: 7
